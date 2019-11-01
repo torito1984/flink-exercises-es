@@ -1,0 +1,1 @@
+java -cp target/flink-exercises-0.1.jar iot.basics.queryable.CustomerServiceClient alert 600 6a6f843b997f3c6da370dd0e0263feb8

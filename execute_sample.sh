@@ -1,0 +1,1 @@
+java -cp target/flink-exercises-0.1.jar helloWorld.FlinkHelloWorld
