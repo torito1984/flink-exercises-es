@@ -13,6 +13,17 @@ import org.apache.flink.streaming.api.windowing.triggers.CountTrigger;
 import org.apache.flink.streaming.api.windowing.windows.GlobalWindow;
 import org.apache.flink.util.Collector;
 
+/**
+ * Ejercicio 8: Calcular la temperatura media de uso
+ *
+ * Issue: nos piden reportar la temperatura media de uso de cada valvula.
+ *
+ * Solucion: mantener un agregado continuo de valores y numero de medidas. Cada vez que llegue un elemento, reportar
+ * un nuevo valor medio. En caso de que este calculo sea mucha carga para cada medida recibida, se puede reducir el
+ * numero de reportes por medida recibida.
+ *
+ * NOTA: esta solucion es mas recomendada en las nuevas versiones de Flink por eficiencia
+ */
 public class ATemperature {
 
     public static void main(String[] args) throws Exception {
@@ -21,8 +32,11 @@ public class ATemperature {
 
         DataStream<Tuple3<Long, Long, Double>> meanRegistered = measurements
                 .keyBy("sensorId")
+                // Agrupamos todas las medidas en una ventana
                 .windowAll(GlobalWindows.create())
+                // Emitimos un valor para la ventana de medidas cada vez que llegue un elemento
                 .trigger(CountTrigger.of(1))
+                // Agregamos el total y el valor acumulado global
                 .aggregate(new AggregateFunction<SensorMeasurement, MAValue, MAValue>() {
                     public MAValue createAccumulator() {
                         return new MAValue();
@@ -48,12 +62,15 @@ public class ATemperature {
                         out.setCum(a.getCum() + b.getCum());
                         return out;
                     }
-                }, new ProcessAllWindowFunction<MAValue, Tuple3<Long, Long, Double>, GlobalWindow>() {
+                }
+                // Cada vez que se ejecute la ventana, procesamos el acumulado para generar la media global
+                , new ProcessAllWindowFunction<MAValue, Tuple3<Long, Long, Double>, GlobalWindow>() {
                     public void process(Context context, Iterable<MAValue> iterable, Collector<Tuple3<Long, Long, Double>> collector) throws Exception {
                         MAValue value = iterable.iterator().next();
                         collector.collect(new Tuple3<>(value.getSensorId(), value.getTimestamp(), value.getCum()/value.getCount()));
                     }
                 })
+                // Filtramos el valor de un sensor por simplicidad (quitar en produccion)
                 .filter(m -> m.f0 == 11080);
 
         meanRegistered.print();

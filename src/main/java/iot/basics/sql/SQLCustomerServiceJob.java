@@ -24,13 +24,25 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
-
 import java.util.List;
 import java.util.Map;
 
 
+/**
+ * Ejercicio 19: Atencion al cliente
+ *
+ * Issue: Se introduce un nuevo sistema por el cual los propietarios pueden reportar via una aplicacion mobil
+ * si han tenido algun problema con el vehiculo. Tenemos acceso a este stream de notificaciones. El servicio de atencion
+ * al cliente nos pide si seria posible tener las ultimas alertas en torno un reporte de DISSATIFFIED o BREAK_DOWN
+ * para poder tener una conversacion mejor informada con el propietario.
+ *
+ * Solucion: conectar el stream de alertas y de notificaciones de usuario y tratar de determinar una potencial causa
+ * de error. En esta solucion, conseguimos un resultado similar al del ejercicio 16, pero realizado con Flink SQL
+ *
+ */
 public class SQLCustomerServiceJob {
 
+    // Stream de medidas
     private static DataStream<Tuple2<SensorMeasurement, ValveState>> getMeasurementStream(StreamExecutionEnvironment env){
         DataStream<SensorMeasurement> measurements = env.addSource(new SensorMeasurementSource(100_000))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<SensorMeasurement>() {
@@ -81,6 +93,7 @@ public class SQLCustomerServiceJob {
                 });
     }
 
+    // Stream de alertas
     private static DataStream<SensorAlert> getAlerts(StreamExecutionEnvironment env) {
         DataStream<Tuple2<SensorMeasurement, ValveState>> fullState = getMeasurementStream(env);
 
@@ -132,6 +145,7 @@ public class SQLCustomerServiceJob {
         return complexAlert;
     }
 
+    // Stream de reportes de propietarios
     private static DataStream<CustomerReport> getCustomerReports(StreamExecutionEnvironment env) {
         DataStream<CustomerReport> reports = env.addSource(new ClientCommunicationSource(1000, 0.05))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<CustomerReport>() {
@@ -158,12 +172,16 @@ public class SQLCustomerServiceJob {
         StreamExecutionEnvironment env = JobUtils.getEnv();
         StreamTableEnvironment fsTableEnv = StreamTableEnvironment.create(env, fsSettings);
 
+        // Registramos el stream de notificaciones de propietarios como tabla dinamica
         fsTableEnv.registerDataStream("customer_reports", getCustomerReports(env), "vehicleId, customerName, value as report_value, timestamp.rowtime as report_time");
+        // Registramos el stream de alertas de telemetria como tabla dinamica
         fsTableEnv.registerDataStream("telemetry_alerts", getAlerts(env), "sensorId, units, value as alert_value, level, timestamp.rowtime as alert_time");
 
 
         //fsTableEnv.scan("customer_reports").printSchema();
 
+        // Conectamos cada notificacion con una potencial alerta que causa el mal funcionamiento en torno a 1h antes y despues
+        // de la notificacion
         Table potentialCauses = fsTableEnv.sqlQuery(
                 "SELECT c.vehicleId, c.customerName, c.report_value, c.report_time, a.sensorId, a.units, a.alert_value, a.level " +
                 "FROM customer_reports c, telemetry_alerts a " +

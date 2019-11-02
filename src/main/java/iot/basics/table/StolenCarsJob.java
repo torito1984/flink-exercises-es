@@ -16,11 +16,25 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.java.StreamTableEnvironment;
 import java.util.concurrent.TimeUnit;
 import org.apache.flink.types.Row;
-
 import static iot.basics.db.VehicleOwnerDataClient.MAX_PARALLELISM;
 
+
+/**
+ * Ejercicio 18: Vehiculos robados
+ *
+ * Issue: Nos notifican que la policia quiere acceso a nuestro stream de actividad de vehiculos con el objetivo de poder
+ * monitorizar la actividad de vehiculos privados. Debido a cuestiones de LOPD, no podemos compartir la actividad de todos
+ * nuestros usuarios, asi que como solucion nos proporcionan un stream de notificaciones de vehiculos robados. Si
+ * detectamos que ese vehiculo esta siendo utilizado, lo notificamos a la policia.
+ *
+ * Solucion: En esta solucion vamos a utilizar el Table API. Para ellos cargamos el stream enriquecido por el CRM
+ * (se ha introducido el reporte de robado al CRM) y posteriormente simplemente se notifica la actividad de automobiles
+ * que han sido notificados como robados.
+ *
+ */
 public class StolenCarsJob {
 
+    // Esta funcion junta el stream de actividad de vehiculos y lo enriquecemos con la infomracion del CRM
     private static DataStream<EnrichedVehicleState> getVehicleState(StreamExecutionEnvironment env) {
         DataStream<SensorMeasurement> measurements = env.addSource(new SensorMeasurementSource(100_000))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<SensorMeasurement>() {
@@ -82,14 +96,17 @@ public class StolenCarsJob {
         StreamExecutionEnvironment env = JobUtils.getEnv();
         StreamTableEnvironment fsTableEnv = StreamTableEnvironment.create(env, fsSettings);
 
+        // Registramos el stream enriquecido de actividad como una tabla dinamica
         fsTableEnv.registerDataStream("vehicles_moving", getVehicleState(env));
 
         // The schema is inferred automatically by Flink
         //fsTableEnv.scan("vehicles_moving").printSchema();
+        // Filtramos la tabla dinamica con solo aquellos vehiculos en actividad que se han reportado como robados
         Table stolenCarCases = fsTableEnv.scan("vehicles_moving")
                 .filter("owner.get('reportedStolen') == true")
                 .select("state.get('vehicleId'), state.get('timestamp'), owner");
 
+        // Convertimos la tabla dinamica de nuevo a un stream de Flink habitual y notificamos
         fsTableEnv.toAppendStream(stolenCarCases, Row.class).print();
 
         env.execute();

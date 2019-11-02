@@ -24,9 +24,20 @@ import org.apache.flink.util.Collector;
 import java.util.List;
 import java.util.Map;
 
-
+/**
+ * Ejercicio 20: Consulta de ultima alarma y ultima queja registrada
+ *
+ * Issue: Desde el departamento de atencion al cliente nos piden poder consultar la ultima queja de propietario
+ * o ultima alarma de telemetria registrada por cada uno de los vehiculos.
+ *
+ * Solucion: Partiendo de la solucion del ejercicio 16, ya tenemos resuelto este caso de uso. El unico cambio
+ * que es necesario introducir el el ProcessFuncion es hacer el estado para cada vehiculo abierto a consulta desde
+ * fuera del pipeline. Para ello utilizamos la capacidad de queryable state de Flink >1.9
+ *
+ */
 public class QueryableCustomerServiceJob {
 
+    // Stream de medidas
     private static DataStream<Tuple2<SensorMeasurement, ValveState>> getMeasurementStream(StreamExecutionEnvironment env){
         DataStream<SensorMeasurement> measurements = env.addSource(new SensorMeasurementSource(100_000))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<SensorMeasurement>() {
@@ -77,6 +88,7 @@ public class QueryableCustomerServiceJob {
                 });
     }
 
+    // Stream de alertas
     private static DataStream<SensorAlert> getAlerts(StreamExecutionEnvironment env) {
         DataStream<Tuple2<SensorMeasurement, ValveState>> fullState = getMeasurementStream(env);
 
@@ -128,6 +140,7 @@ public class QueryableCustomerServiceJob {
         return complexAlert;
     }
 
+    // stream de notificaciones de propietario
     private static DataStream<CustomerReport> getCustomerReports(StreamExecutionEnvironment env) {
         DataStream<CustomerReport> reports = env.addSource(new ClientCommunicationSource(1000, 0.05))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<CustomerReport>() {
@@ -162,7 +175,8 @@ public class QueryableCustomerServiceJob {
             }
         });
 
-        // We make the state of the job queryable
+        // permitimos que el estado del pipeline sea consultable desde el exterior.
+        // Ver la funcion open de QueryablePotentialCauseProcess y como consultar desde un programa externo en QueryablePotentialCauseProcess
         DataStream<Tuple2<CustomerReport, SensorAlert>> potentialCauses = customerReports.connect(alerts)
                 .process(new QueryablePotentialCauseProcess());
 

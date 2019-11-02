@@ -51,11 +51,11 @@ Se sugiere seguir el siguiente orden al leer los ejemplos, aunque todos son auto
 15. MeanPerformanceTracking
 16. StateTemperatureTracking
 17. VehicleStateTracking
-18. VehicleOwnerAsyncEnrichmentJob
+18. async.VehicleOwnerAsyncEnrichmentJob
 19. CustomerServiceJob
-20. DangerousValves
+20. cep.DangerousValves
 21. table.StolenCarsJob
 22. sql.SQLCustomerServiceJob
-23. QueryableCustomerServiceJob
-24. CustomerServiceClient
+23. queryable.QueryableCustomerServiceJob
+24. queryable.CustomerServiceClient
 25. wikiedits.WikipediaAnalysis

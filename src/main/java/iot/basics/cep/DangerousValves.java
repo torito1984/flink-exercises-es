@@ -25,8 +25,21 @@ import org.apache.flink.util.Collector;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Ejercicio 17: Errores complejos
+ *
+ * Issue: Nos solicitan que detectemos patrones de fallo mas complejos. En concreto, si una valvula se obstruye
+ * (notifica OBSTRUCTED mas de 5 veces seguidas) y posteriormente la temperatura sube, se puede determinar que
+ * la valvula esta en riesgo de rotura. Este tipo de alerta es de nivel 5.
+ *
+ * Solucion: utilizando la libreria de Complex Event Processing de Flink, podemos detectar esta secuencia de eventos
+ * del stream conjunto de temperaturas y estados de valvulas. Si este patron se detecta para algun sensor, se notifica
+ * la alerta de un nivel superior.
+ *
+ */
 public class DangerousValves {
 
+    // Stream de medidas de temperatura
     private static DataStream<Tuple2<SensorMeasurement, ValveState>> getMeasurementStream(StreamExecutionEnvironment env){
         DataStream<SensorMeasurement> measurements = env.addSource(new SensorMeasurementSource(100_000))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<SensorMeasurement>() {
@@ -45,6 +58,7 @@ public class DangerousValves {
                     }
                 });
 
+        // Stream de medidas de estado de valvulas
         DataStream<ValveState> valveState = env.addSource(new ValveStateSource(10000, 0.3))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<ValveState>() {
                     private final long maxOutOfOrderness = 3500; // 3.5 seconds
@@ -62,7 +76,7 @@ public class DangerousValves {
                     }
                 });
 
-        // Join the two streams
+        // Juntamos medidas de temperatura y valvula que esten proximas en el tiempo
         return measurements.join(valveState)
                 .where(m ->m.getSensorId())
                 .equalTo(v -> v.getSensorId())
@@ -81,6 +95,13 @@ public class DangerousValves {
         StreamExecutionEnvironment env = JobUtils.getEnv();
 
         DataStream<Tuple2<SensorMeasurement, ValveState>> fullState = getMeasurementStream(env);
+
+        /**
+         * Definimos el patron de error como:
+         *  - comenzamos con un comportamiento normal
+         *  - detectamos 5 medidas o mas en estado OBSTRUCTED
+         *  - el patron temina con una deteccion de aumento de temperatura
+         */
 
         Pattern<Tuple2<SensorMeasurement, ValveState>, ?> pattern = Pattern.<Tuple2<SensorMeasurement, ValveState>>
          begin("normal").where(
@@ -106,10 +127,14 @@ public class DangerousValves {
                 }
         );
 
-        PatternStream<Tuple2<SensorMeasurement, ValveState>> patternStream = CEP.pattern(fullState
-                .keyBy((KeySelector<Tuple2<SensorMeasurement, ValveState>, Long>) m -> m.f0.getSensorId()),
+
+        // Aplicamos el CEP al stream de medidas de sensor
+        PatternStream<Tuple2<SensorMeasurement, ValveState>> patternStream = CEP.pattern(
+                // Agrupamos el stream para cada sensor antes de aplicar el patron
+                fullState.keyBy((KeySelector<Tuple2<SensorMeasurement, ValveState>, Long>) m -> m.f0.getSensorId()),
                 pattern);
 
+        // Una vez detectamos un evento que cuadra con el patron notificamos una alerta con el nivel adecaudo
         DataStream<SensorAlert> complexAlert = patternStream.process(
                 new PatternProcessFunction<Tuple2<SensorMeasurement, ValveState>, SensorAlert>() {
                     @Override

@@ -10,16 +10,31 @@ import org.apache.flink.streaming.api.functions.async.RichAsyncFunction;
 import java.util.Collections;
 import java.util.function.Consumer;
 
+/**
+ * Funcion utilizada para conectarse al CRM y enriquecer el stream
+ */
 public class AsyncEnrichmentFunction extends RichAsyncFunction<VehicleState, EnrichedVehicleState> {
 
 	private VehicleOwnerDataClient client;
 
+	/**
+	 * En la apertura, abrimos las conexiones necesarias
+	 * @param parameters
+	 * @throws Exception
+	 */
 	@Override
 	public void open(final Configuration parameters) throws Exception {
 		super.open(parameters);
 		client = new VehicleOwnerDataClient();
 	}
 
+	/**
+	 * En cada invocacion asincrona, usamos un futuro para retornar el valor enriquecido una vez que el CRM remoto responda
+	 *
+	 * @param vehicleState
+	 * @param resultFuture
+	 * @throws Exception
+	 */
 	@Override
 	public void asyncInvoke(
 			final VehicleState vehicleState,

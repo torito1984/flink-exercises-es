@@ -9,6 +9,13 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.streaming.connectors.wikiedits.WikipediaEditEvent;
 import org.apache.flink.streaming.connectors.wikiedits.WikipediaEditsSource;
 
+/**
+ * Ejercicio 21: Acceso al stream de cambios de wikipedia
+ *
+ * Este codigo de ejemplo calcula los cambios hecho a wikipedia, agrupados por usuaio, er los ultimos 5 segundos.
+ * Tomar como punto de partida para un ejercicio libre.
+ *
+ */
 public class WikipediaAnalysis {
 
     public static void main(String[] args) throws Exception {

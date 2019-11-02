@@ -20,6 +20,20 @@ import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
 import org.apache.flink.util.Collector;
 
 
+/**
+ * Ejercicio 11: Sensor secundario por seguirdad
+ *
+ * Issue: Nos comunican que, en los nuevos modelos, las valvulas llevan 2 sensores por seguridad. Nos ordenan comparar
+ * las medidas recibidas por ambos sensores. En el caso que la desviacion sea mayor a 20 grados, reportar un error
+ * de medida.
+ *
+ * Solucion: ingestar los dos streams de datos, juntarlos por el id de sensor y comparar las medidas recibidas en torno
+ * al mismo momento en el tiempo. Si la desviacion es muy grande, reportar un error.
+ *
+ * NOTA: Esta solucion es correcta y mas eficiente, gracias a la utilizacion de un agregador antes de aplicar la funcion
+ * de ejecucion de ventana.
+ *
+ */
 public class EfficientSecondarySensor {
 
 
@@ -69,7 +83,10 @@ public class EfficientSecondarySensor {
         DataStream<SensorAlert> sensorAlerts = allValues
             .keyBy("sensorId")
             .window(TumblingEventTimeWindows.of(Time.seconds(10)))
-            .aggregate(new DoubleSensorAverageAggregate(), new ProcessWindowFunction<Tuple4<Double, Double, Double, Double>, SensorAlert, Tuple, TimeWindow>() {
+             // En esta solucion, usamos un agregador que mantiene el total para ambos sensores actualizado hasta el momento
+             // de ejecutar la ventana. Ver el codigo de DoubleSensorAverageAggregate para ver como se realiza el calculo
+            .aggregate(new DoubleSensorAverageAggregate()
+                    , new ProcessWindowFunction<Tuple4<Double, Double, Double, Double>, SensorAlert, Tuple, TimeWindow>() {
                 @Override
                 public void process(Tuple tuple, Context context, Iterable<Tuple4<Double, Double, Double, Double>> iterable, Collector<SensorAlert> collector) throws Exception {
                     Tuple4<Double, Double, Double, Double> agg = iterable.iterator().next();

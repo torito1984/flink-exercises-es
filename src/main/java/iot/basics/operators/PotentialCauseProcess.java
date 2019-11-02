@@ -10,6 +10,11 @@ import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 
+/**
+ * Para intentar determinar una causa de error, mantenemos la ultima queja de propietario y la ultima alerta del vehiculo.
+ * En el caso de detectar un caso en el que notificacion y alerta esta poximas en el tiempo notificamos una potencial
+ * causa de la queja.
+ */
 public class PotentialCauseProcess extends KeyedCoProcessFunction<Long, CustomerReport, SensorAlert, Tuple2<CustomerReport, SensorAlert>> {
 
     private transient ValueState<CustomerReport> latestComplaint;

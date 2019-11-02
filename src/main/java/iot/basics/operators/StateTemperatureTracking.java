@@ -19,7 +19,24 @@ import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.OutputTag;
 
-
+/**
+ * Ejercicio 13: Temperatura en cada estado
+ *
+ * Issue: Nos informan que las alarmas por temperatura deberian tener en cuenta el estado en el que se encontraba la valvula
+ * en torno al momento de tomar la medicion. Las temperaturas de alarma son diferentes dependiendo del estado
+ *  - OPEN-> mas de 500 grados
+ *  - CLOSED -> mas de 550
+ *  - OBSTRUCTED -> notificar alerta independientemente de la temperatura
+ *
+ *  Las alarmas de temperatura son de nivel 2, las alarmas de OBSTRUCCION son de nivel 3.
+ *
+ *  Solucion: Juntamos las medidas de estado de valvula y temperatura dentro de la misma ventana de 200 ms. Para cada
+ *  par de temperatura y estado, si encontramos un par de medidas que cumplan el criterio, emitimos una alerta.
+ *
+ *  Separamos las alarmas de temperatura de aquellas que provienen de una obstruccion. De este modo podemos tratarlas
+ *  independientemente, incluido el darles un nivel de alarma diferente.
+ *
+ */
 public class StateTemperatureTracking {
 
     public static void main(String[] args) throws Exception {
@@ -68,12 +85,17 @@ public class StateTemperatureTracking {
                 .apply(new FlatJoinFunction<SensorMeasurement, ValveState, Tuple2<SensorMeasurement, ValveState>>() {
                     @Override
                     public void join(SensorMeasurement sensorMeasurement, ValveState valveState, Collector<Tuple2<SensorMeasurement, ValveState>> collector) throws Exception {
-                        if((sensorMeasurement.getTimestamp() > valveState.getTimestamp()) && (sensorMeasurement.getTimestamp() - valveState.getTimestamp()) < 200){
+                        // Solo emitimos las medidas que esten proximas en el tiempo (<20msec), puesto que si estan mas lejos
+                        // posiblemente el estado no se corresponde con la medida de temperatura
+                        if((sensorMeasurement.getTimestamp() > valveState.getTimestamp()) && (sensorMeasurement.getTimestamp() - valveState.getTimestamp()) < 20){
                             collector.collect(new Tuple2<>(sensorMeasurement, valveState));
                         }
                     }
                 });
 
+
+        // De cara a tratar las alarmas de distinta naturaleza de manera diferente, las vamos a tratar como side
+        // outputs diferentes
         final OutputTag<Tuple2<SensorMeasurement, ValveState>> outputOpenClosed =
                 new OutputTag<Tuple2<SensorMeasurement, ValveState>>("open-closed"){};
         final OutputTag<Tuple2<SensorMeasurement, ValveState>> outputObstructed =
@@ -90,32 +112,35 @@ public class StateTemperatureTracking {
                     switch(m.f1.getValue()){
                         case OPEN:
                         case CLOSE:
+                            //Si es una alarma de temperatura, escribir al side output de alarmas de temperatura
                             context.output(outputOpenClosed, m);
                             break;
                         case OBSTRUCTED:
+                            // Si es una alarma de obstruccion, escribir al side output de alarmas de obstruccion
                             context.output(outputObstructed, m);
                     }
                 }
             });
 
-        // Alert different types of alerts in different ways
+        // Aqui caputuramos las alarmas de temperatura y emitimos de la manera indicada en la especificacion
         alertsStream.getSideOutput(outputOpenClosed).map( m -> {
             SensorAlert alert = new SensorAlert();
             alert.setSensorId(m.f0.getSensorId());
             alert.setUnits("MALFUNCTIONING TEMPERATURE");
             alert.setValue(m.f0.getValue());
             alert.setTimestamp(m.f0.getTimestamp());
-            alert.setLevel(2);
+            alert.setLevel(2); // El nivel de alarma de temperatura es 2
             return alert;
         }).print();
 
+        // Aqui caputuramos las alarmas de obstuccion y emitimos de la manera indicada en la especificacion
         alertsStream.getSideOutput(outputOpenClosed).map( m -> {
             SensorAlert alert = new SensorAlert();
             alert.setSensorId(m.f0.getSensorId());
             alert.setUnits("MALFUNCTIONING OBSTRUCTED");
             alert.setValue(m.f0.getValue());
             alert.setTimestamp(m.f0.getTimestamp());
-            alert.setLevel(3);
+            alert.setLevel(3); // El nivel de alarma de obstruccion es 3
             return alert;
         }).print();
 

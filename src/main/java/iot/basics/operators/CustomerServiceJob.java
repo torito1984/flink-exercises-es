@@ -5,8 +5,6 @@ import iot.basics.source.ClientCommunicationSource;
 import iot.basics.source.SensorMeasurementSource;
 import iot.basics.source.ValveStateSource;
 import org.apache.flink.api.common.functions.FlatJoinFunction;
-import org.apache.flink.api.common.state.ValueState;
-import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.cep.CEP;
@@ -14,12 +12,10 @@ import org.apache.flink.cep.PatternStream;
 import org.apache.flink.cep.functions.PatternProcessFunction;
 import org.apache.flink.cep.pattern.Pattern;
 import org.apache.flink.cep.pattern.conditions.SimpleCondition;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
-import org.apache.flink.streaming.api.functions.co.KeyedCoProcessFunction;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -28,8 +24,22 @@ import java.util.List;
 import java.util.Map;
 
 
+
+/**
+ * Ejercicio 16: Atencion al cliente
+ *
+ * Issue: Se introduce un nuevo sistema por el cual los propietarios pueden reportar via una aplicacion mobil
+ * si han tenido algun problema con el vehiculo. Tenemos acceso a este stream de notificaciones. El servicio de atencion
+ * al cliente nos pide si seria posible tener las ultimas alertas en torno un reporte de DISSATIFFIED o BREAK_DOWN
+ * para poder tener una conversacion mejor informada con el propietario.
+ *
+ * Solucion: conectar el stream de alertas y de notificaciones de usuario y tratar de determinar una potencial causa
+ * de error.
+ *
+ */
 public class CustomerServiceJob {
 
+    // Stream de medidas y estados de valvula
     private static DataStream<Tuple2<SensorMeasurement, ValveState>> getMeasurementStream(StreamExecutionEnvironment env){
         DataStream<SensorMeasurement> measurements = env.addSource(new SensorMeasurementSource(100_000))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<SensorMeasurement>() {
@@ -80,6 +90,7 @@ public class CustomerServiceJob {
                 });
     }
 
+    // Stream de alertas
     private static DataStream<SensorAlert> getAlerts(StreamExecutionEnvironment env) {
         DataStream<Tuple2<SensorMeasurement, ValveState>> fullState = getMeasurementStream(env);
 
@@ -131,6 +142,7 @@ public class CustomerServiceJob {
         return complexAlert;
     }
 
+    // Stream de notificaciones de propietario
     private static DataStream<CustomerReport> getCustomerReports(StreamExecutionEnvironment env) {
         DataStream<CustomerReport> reports = env.addSource(new ClientCommunicationSource(1000, 0.05))
                 .assignTimestampsAndWatermarks(new AssignerWithPeriodicWatermarks<CustomerReport>() {
@@ -165,6 +177,8 @@ public class CustomerServiceJob {
             }
         });
 
+        // Juntamos el stream de notificaciones con las aletas del vehiculo y tratamos de determinar una causa potencial
+        // de error.
         DataStream<Tuple2<CustomerReport, SensorAlert>> potentialCauses = customerReports.connect(alerts)
                 .process(new PotentialCauseProcess());
 
